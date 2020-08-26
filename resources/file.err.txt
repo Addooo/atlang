@@ -1,0 +1,1 @@
+1:***SEMANTIC ERROR [1] in (3,0) - Trying to building a non deterministi turing machine

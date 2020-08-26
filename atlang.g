@@ -2,7 +2,7 @@ grammar atlang;
 
 options {
   language = Java;
- // k = 1;
+  k = 1;
 }
 
 @header{
@@ -35,11 +35,18 @@ options {
  public String getReadableRules(){
 	return handler.readablePrint();
  }
- 
+
+ public String getFinalStates(){
+	return handler.sf.toString();
+ }
  
   public ArrayList<String> getErrors () {
     return handler.errorList;
-  } 
+  }
+
+  public String getPy(){
+ 	return handler.printPy;
+ }
  
   public void displayRecognitionError(String[] tokenNames,
                                        RecognitionException e) {
@@ -58,27 +65,61 @@ options {
 		 System.out.println("VALUE HASHTABLE: " + ht.toString());
 	}
 	catch(Exception e){
-		System.out.println(e.toString());
+//		System.out.println(e.toString());
 	}
 	 if(ht.containsKey(state.getText()) && ht.get(state.getText()).contains(sym_read.getText())){
-	 	handler.errorList.add("non determinismo");
-		System.out.println("Error found");
+//	 	handler.errorList.add("NOT DETERMINISTIC");
+		handler.semError(state, 1);
+//		System.out.println("Error found");
 	}
     	 else
     	 {
 		if(!ht.containsKey(state.getText())){
-			System.out.println("Fist time state");
+//			System.out.println("Fist time state");
 			ArrayList<String> app = new ArrayList<String>();
 			app.add(sym_read.getText());
 			ht.put(state.getText(), app);
     		  }
     		  else{
-			System.out.println("Not first time state");
+//			System.out.println("Not first time state");
 			ht.get(state.getText()).add(sym_read.getText());
 		}
     			     		  
     	  }
     }	
+
+   public void evaluateFin(Token state_fin, Token newstate){
+//	System.out.println("ADDING FINAL STATE");
+	try{
+		if(state_fin.getText().equals("sF") && !handler.sf.contains("'" + newstate.getText() + "'" )){
+			handler.sf.add("'" + newstate.getText() + "'");
+			System.out.println("STATO FINALE " + newstate.getText());
+		}
+	}
+	catch(Exception e){
+		//System.out.println("È null pointer exc ecc.");
+	}
+
+   }
+
+
+   public void evaluateStateInit(Token in){
+
+	if(!ht.containsKey("s0")){
+//		handler.errorList.add("NO INITIAL STATE");
+		handler.semError(in, 2);
+	}
+
+   }
+
+   public void evaluateStateFin(Token in){
+
+	if(handler.sf.isEmpty()){
+//		handler.errorList.add("NO FINAL STATE");
+		handler.semError(in, 3);
+	}
+
+   }
 
 }
 
@@ -88,70 +129,72 @@ options {
 
 start
 @init { init (); }
-    :	BEGIN NEWLINE 
-    	file=FILE { handler.evaluateFile($file); }
-	//deve sempre iniziare con una regola con lo stato iniziale
-	//per obbligare ad avere uno stato iniziale
-	NEWLINE rule_z 
-	( rule_z | rule)*
-	//deve sempre finire con una regola con lo stato finale
-	//per obbligare ad avere uno stato finale
-	(rule_f)+
+    :	in=BEGIN 
+	NEWLINE
+	(rule)+
+	{
+		evaluateStateInit($in); // control if exist s0
+		evaluateStateFin($in); // 	control if exist at least one final State
+	}
+	(tape)+		
+	compute
     	END NEWLINE*
      ;
 
+     
 
-rule_z: stato=STATE_INIZ SEPARATOR
-        sym_read=SYMBOL { verificaStatoSim(stato, sym_read); }
-        SEPARATOR
-        mov=MOVEMENT SEPARATOR
-        newstate=STATE SEPARATOR
-        sym_write=SYMBOL
-        {
-        	handler.evaluateRule($stato, $sym_read, $mov, $newstate, $sym_write);	
-        } 
-	NEWLINE
-	;
-        
-
-rule : 	stato=STATE SEPARATOR
+rule : 	stato=(STATE | STATE_INIZ) SEPARATOR
 	sym_read=SYMBOL { verificaStatoSim(stato, sym_read); }
 	SEPARATOR
 	mov=MOVEMENT SEPARATOR
-	newstate=STATE SEPARATOR
+	newstate=(STATE | STATE_INIZ) SEPARATOR
 	sym_write=SYMBOL
 	{
 		handler.evaluateRule($stato, $sym_read, $mov, $newstate, $sym_write);	
 	} 
-	NEWLINE
+	(SEPARATOR state_fin=IS_FINAL
+	{
+        	evaluateFin($state_fin, $newstate);
+        }
+	)?
+	NEWLINE	
 	;
 
-rule_f : stato=( STATE | STATE_INIZ) SEPARATOR
-	 sym_read=SYMBOL { verificaStatoSim(stato, sym_read); }
-	 SEPARATOR
-	 mov=MOVEMENT SEPARATOR
-	 newstate=STATE_FIN SEPARATOR
-	 sym_write=SYMBOL
-	 {
- 		handler.evaluateRule($stato, $sym_read, $mov, $newstate, $sym_write);	
- 	} 
-	NEWLINE
-	;
+tape: 
+      TAPE
+      QUAD_I
+      symbolStart=SYMBOL
+	{
+		handler.evaluateSym($symbolStart);	
+	} 
+      (
+      SEPARATOR
+      symbol=SYMBOL 
+      {
+   		handler.evaluateSym($symbol);	
+       }                                      	
+       )*     
+      QUAD_O
+      NEWLINE
+      {
+	handler.evaluateTape();
+      }
+      ;
 
+compute: COMP NEWLINE
+	{
+		handler.compute();
+	};
 
 STATE : 's' ('1'..'9') ('0'..'9')* ;
 
 STATE_INIZ : 's0' ;
-
-STATE_FIN : 'sF' ;
 
 MOVEMENT : '<' | '>' | '=' ;
 
 SYMBOL : ('0'..'9')+ | '!' ;
 
 NEWLINE : '\n' ;
-
-FILE : ('a'..'z'|'A'..'Z'|'0'..'9'|'_')+ '.t';
 
 SEPARATOR : ',';
 
@@ -161,3 +204,12 @@ END : 'end';
 
 WS  :  ( ' ' | '\t') {skip(); } ;
 
+QUAD_I : '[' ;
+
+QUAD_O : ']' ;
+
+IS_FINAL : 'sF' ; 
+
+COMP : 'computation' ;
+
+TAPE : 'tape' ;

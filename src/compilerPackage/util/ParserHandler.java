@@ -1,6 +1,7 @@
 package compilerPackage.util;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 
 import org.antlr.runtime.RecognitionException;
 import org.antlr.runtime.Token;
@@ -10,62 +11,128 @@ import org.antlr.runtime.Token;
 public class ParserHandler {
 	
 	/*
-	 * Error in case filename and value expressed
-	 * at start of the program doesn't coincide
-	 */
-	public static final int E0_FILENAME_MUST_COINCIDE = 0;
-	
-	/*
 	 * syntax error
 	 */
-	public static final int E1_SYNTAX_ERROR = 1;
+	public static final int E0_SYNTAX_ERROR = 0;
 	
 	/*
 	 * State with that symbol to read already exist, trying
 	 * to define a non deterministic turin machine
 	 */
-	public static final int E2_NON_DET_TM = 2;
+	public static final int E1_NON_DET_TM = 1;
+	
+	/*
+	 * Initial state not declared
+	 */
+	public static final int E2_NO_INIT_STATE = 2;
+	
+	/*
+	 * No final state declared
+	 */
+	public static final int E3_NO_FIN_STATE = 3; 
 	
 	
-	
-	public StringBuffer translation;
 	public ArrayList<String> Rules;
+	public ArrayList<String> parkedSymbols;
+	public ArrayList<String> tapes;
+	public ArrayList<String> sf;
 	
 	public ArrayList<String> errorList;
 
 
-	public String print;
+	public String printPy;
 	
-	private static Integer numberOfLine;
+	
+	public HashMap<String,String> movement;
+	
+	
 	
 	public ParserHandler() {
-        this.translation = new StringBuffer();
         this.errorList = new ArrayList<String>();
         this.Rules = new ArrayList<String>();
-        numberOfLine = 1;
+        this.movement = new HashMap<String, String>();
+        this.parkedSymbols = new ArrayList<String>();
+        this.tapes = new ArrayList<String>();
+        this.sf = new ArrayList<String>();
+        movement.put(">","r");
+        movement.put("<","l");
+        movement.put("=","s");
     }
-	
-	public void evaluateFile(Token file) {
-		
-		boolean fileNameCorrect = true;
-		String fileName = file.getText();
-		//System.out.println("Controllare che esista il file: [" + fileName + "]");
-		
-		
-		if(!fileNameCorrect)
-			semError(file, E0_FILENAME_MUST_COINCIDE);
-	}
-	
 	
 	public void evaluateRule(Token state, Token sym_read, Token mov, Token newstate, Token sym_write) {
 		
-		String r; 
-		r = "("+state.getText() + "," + sym_read.getText() + ","  
-			 + mov.getText() + "," + newstate.getText() + ","
-			 + sym_write.getText() + ")";
+		String r;
+		
+		r = "('" + sym_read.getText() + "','" + state.getText() + "','"
+			+ sym_write.getText() + "','" + newstate.getText() + "','"
+			+ movement.get(mov.getText()).toString()
+			+ "')";
 		
 		//add to the rule to Rules array
 		Rules.add(r);
+	}
+	
+	
+	public void evaluateSym(Token sym){
+		
+		parkedSymbols.add("'" + sym.getText() + "'");
+		
+	}
+	
+	public void evaluateTape() {
+		
+		System.out.println("SYMBOL: " + parkedSymbols.toString());
+		tapes.add(parkedSymbols.toString());
+	;	parkedSymbols.clear();
+	}
+	
+	public void compute() {
+	
+
+		String file = "";
+		
+		//import the interpeter 
+		file += "from turing import *\n";
+		file += "\n\n";
+		
+		//main declaration
+		file += "if __name__ == \"__main__\":\n\n";
+		
+		int index = 0;
+		//tape(s) turing machine
+		for(String t: tapes) {
+			
+			
+			t = t.replace("[", "");
+			t = t.replace("]", "");
+			
+			file += "\tmy_tape" + index + " = tape(" + t.toString() + ", tape_name = \"test" + index +
+					"\")\n";
+			file += "\tmy_tape" + index + ".print_tape()\n\n";
+			
+			index++;
+		}
+		
+		
+		//rules turing machine
+		file += "\tlist_tup = " + Rules + "\n";
+		file += "\tmy_rules = rules(rules_name = \"rules_test\", tuplist = list_tup)\n\n";	
+		file += "\tmy_rules.print_rules()\n\n";
+		
+		//computation
+		index = 0;
+		for(String t: tapes) {
+			
+			file += "\tc = computation(my_rules, [my_tape" + index + "], " + sf.toString() + ")\n";
+			
+			file += "\tmy_tape" + index + ".print_tape()\n\n";
+			
+			index++;
+		}
+		
+	
+		printPy = file;
+		
 	}
 	
 	public String readablePrint() {
@@ -82,7 +149,7 @@ public class ParserHandler {
 	public void handleError(String[] tokenNames, RecognitionException e, String hdr, String msg) {
 		// TODO Auto-generated method stub
 		
-		String err = "*** SINTAX ERROR [" + E1_SYNTAX_ERROR + "] in " +
+		String err = "*** SINTAX ERROR [" + E0_SYNTAX_ERROR + "] in " +
 	               "(" + e.token.getLine() + ", " + e.token.getCharPositionInLine() + ") - " +
 	               "Found ";
 	    if (e.token.getType() >= 0)
@@ -92,7 +159,6 @@ public class ParserHandler {
 
 	    errorList.add(err);
 		
-		
 	}
 	
 	public void semError(Token tk, int code) {
@@ -101,11 +167,14 @@ public class ParserHandler {
                 + "in (" + tk.getLine() + "," + tk.getCharPositionInLine() + ") - ";
 		
 		switch(code) {
-			case E0_FILENAME_MUST_COINCIDE:
-				err += "Filename must coincide";
-				break;
-			case E2_NON_DET_TM:
+			case E1_NON_DET_TM:
 				err += "Trying to building a non deterministi turing machine";
+				break;
+			case E2_NO_INIT_STATE:
+				err += "No initial state declared";
+				break;
+			case E3_NO_FIN_STATE:
+				err += "No final state declared";
 				break;
 		}
 			
@@ -113,5 +182,6 @@ public class ParserHandler {
 		
 		
 	}
+	
 	
 }
